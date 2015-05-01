@@ -224,8 +224,8 @@ sub add_action_menu_item {
 # 	$c->log->debug( sprintf( "Action details: \nclass: %s\nnamespace: %s\nreverse: %s\nprivate_path: %s", $action->class, $action->namespace, $action->reverse, $action->private_path ) ) if $c->debug;
 #  	$c->log->debug( "Value of menu_parents is: " . p($menu_parents) ) if $c->debug;
 
-	my $c_nav_config   = $c->config->{navigation}          || {};
-	my $ctr_nav_config = $controller->config->{navigation} || {};
+# 	my $c_nav_config   = $c->config->{navigation}          || {};
+# 	my $ctr_nav_config = $controller->config->{navigation} || {};
 
 	my $action_key = $action->namespace . '/' . $action->name;
 # 	$c->log->debug( sprintf( "Adding action item for path: %s with parent: %s in controller: %s", $action_key, $action->attributes->{MenuParent}->[0] || '', ref $controller ) ) if $c->debug;
@@ -237,17 +237,20 @@ sub add_action_menu_item {
 		## does parent contain a hash
 		## if not, it's the name of a menubar, so append # to make menu root
 		$parent_mp = $parent_mp . '#' unless $parent_mp =~ /#/;
-		my $action_attrs = $action->attributes;
+		my $act_attrs = $action->attributes;
 
-		my $item_name = $action_attrs->{Menu}->[$i] // $last_item_name;
+		my $item_name = $act_attrs->{Menu}->[$i] // $last_item_name;
 		$last_item_name = $item_name;
 		my $mp_ak = sprintf( '%s!%s!%s', $parent_mp, $item_name, $action_key );
 
 		next if $self->get_action_menu_item($mp_ak);
 
-		my $conditions = $c_nav_config->{$mp_ak}->{conditions}  // $ctr_nav_config->{$mp_ak}->{conditions}  // $action_attrs->{MenuCond} // [];
+		my $c_nav_item   = $c->get_navigation_item($mp_ak) || {};
+		my $ctr_nav_item = $controller->get_navigation_item($mp_ak) || {};
+
+		my $conditions = $c_nav_item->{conditions}  // $ctr_nav_item->{conditions}  // $act_attrs->{MenuCond} // [];
 # 		if ( scalar @$conditions == 0 ) {
-			my $role_attr = $action_attrs->{MenuRoles}->[$i] // $last_item->{required_roles} // '';
+			my $role_attr = $act_attrs->{MenuRoles}->[$i] // $last_item->{required_roles} // '';
 			if ($role_attr) {
 				my @roles_and = split( ',', $role_attr );
 				# Check each required role.
@@ -271,8 +274,8 @@ sub add_action_menu_item {
 			} ## end if ($role_attr)
 # 		} ## end if ( scalar @$conditions == 0 )
 
-		my $action_url_args   = $action_attrs->{MenuArgs} // [];
-		my $action_url_params = $c_nav_config->{$mp_ak}->{query_params}  // $ctr_nav_config->{$mp_ak}->{query_params}  // $action_attrs->{MenuQueryParams}->[$i] // $last_item->{query_params}  // '',
+		my $action_url_args   = $act_attrs->{MenuArgs} // [];
+		my $action_url_params = $c_nav_item->{query_params}  // $ctr_nav_item->{query_params}  // $act_attrs->{MenuQueryParams}->[$i] // $last_item->{query_params}  // '',
 		my $url;
 		my $url_cb;
 		if ( scalar @$action_url_args >= 1 || $action_url_params  ) {
@@ -298,18 +301,16 @@ sub add_action_menu_item {
 				: ( url => $url )
 			),
 			query_params => $action_url_params,
-			order        => $c_nav_config->{$mp_ak}->{order} // $ctr_nav_config->{$mp_ak}->{order} // $action_attrs->{MenuOrder}->[$i] // $last_item->{order} // 0,
-			label        => $c_nav_config->{$mp_ak}->{label} // $ctr_nav_config->{$mp_ak}->{label} // $action_attrs->{Menu}->[$i] // $last_item->{label} // '',
-			title        => $c_nav_config->{$mp_ak}->{title} // $ctr_nav_config->{$mp_ak}->{title} // $action_attrs->{MenuTitle}->[$i] // $last_item->{title} // '',
-			icon         => $c_nav_config->{$mp_ak}->{icon} // $ctr_nav_config->{$mp_ak}->{icon} // $action_attrs->{MenuIcon}->[$i] // $last_item->{icon} // '',
-			category => $c_nav_config->{$mp_ak}->{category} // $ctr_nav_config->{$mp_ak}->{category} // $action_attrs->{MenuCategory}->[$i] // $last_item->{category} // $self->default_category,
-			dom_id => $c_nav_config->{$mp_ak}->{dom_id} // $ctr_nav_config->{$mp_ak}->{dom_id} // $action_attrs->{MenuDomId}->[$i] // $last_item->{dom_id} // '',
-			css_classes => $c_nav_config->{$mp_ak}->{css_classes} // $ctr_nav_config->{$mp_ak}->{css_classes} // $action_attrs->{MenuCssClasses} // [],
-			description => $c_nav_config->{$mp_ak}->{description} // $ctr_nav_config->{$mp_ak}->{description} // $action_attrs->{MenuDescription}->[$i]
-			  // $last_item->{description} // '',
-			required_roles => $c_nav_config->{$mp_ak}->{required_roles} // $ctr_nav_config->{$mp_ak}->{required_roles} // $action_attrs->{MenuRoles}->[$i]
-			  // $last_item->{required_roles} // '',
-			conditions => $conditions,
+			order        => $c_nav_item->{order} // $ctr_nav_item->{order} // $act_attrs->{MenuOrder}->[$i] // $last_item->{order} // 0,
+			label        => $c_nav_item->{label} // $ctr_nav_item->{label} // $act_attrs->{Menu}->[$i] // $last_item->{label} // '',
+			title        => $c_nav_item->{title} // $ctr_nav_item->{title} // $act_attrs->{MenuTitle}->[$i] // $last_item->{title} // '',
+			icon         => $c_nav_item->{icon} // $ctr_nav_item->{icon} // $act_attrs->{MenuIcon}->[$i] // $last_item->{icon} // '',
+			dom_id       => $c_nav_item->{dom_id} // $ctr_nav_item->{dom_id} // $act_attrs->{MenuDomId}->[$i] // $last_item->{dom_id} // '',
+			css_classes => $c_nav_item->{css_classes} // $ctr_nav_item->{css_classes} // $act_attrs->{MenuCssClasses} // [],
+			category => $c_nav_item->{category} // $ctr_nav_item->{category} // $act_attrs->{MenuCategory}->[$i] // $last_item->{category} // $self->default_category,
+			description    => $c_nav_item->{description}    // $ctr_nav_item->{description}    // $act_attrs->{MenuDescription}->[$i] // $last_item->{description}    // '',
+			required_roles => $c_nav_item->{required_roles} // $ctr_nav_item->{required_roles} // $act_attrs->{MenuRoles}->[$i]       // $last_item->{required_roles} // '',
+			conditions     => $conditions,
 		};
 
 		$last_item = $item;
@@ -330,23 +331,25 @@ sub add_action_menu_item {
 			if ( $menu_path && !$self->get_menu($menu_path) ) {
 # 				$c->log->debug( "Setting menu - menu_path is: " . $menu_path ) if $c->debug;
 				my $mp = $menubar . $menu_path;
+				my $c_nav_item_menu   = $c->get_navigation_item($mp)          || {};
+				my $ctr_nav_item_menu = $controller->get_navigation_item($mp) || {};
 				$c->log->debug(
 					sprintf(
-						"Setting menu with label - ctx: %s, ctrl: %s, attr: %s, path: %s", $c_nav_config->{$mp}->{label} || '', $ctr_nav_config->{$mp}->{label} || '',
-						$action_attrs->{MenuParentLabel}->[0] || '', $menu_path_item
+						"Setting menu with label - ctx: %s, ctrl: %s, attr: %s, path: %s", $c_nav_item_menu->{label} || '', $ctr_nav_item_menu->{label} || '',
+						$act_attrs->{MenuParentLabel}->[0] || '', $menu_path_item
 					)
 				) if $c->debug;
 				$self->set_menus(
 					$menu_path, {
-						path        => $c_nav_config->{$mp}->{path}        // $ctr_nav_config->{$mp}->{path}        // $action_attrs->{MenuParentPath}->[0]        // $menu_path,
-						order       => $c_nav_config->{$mp}->{order}       // $ctr_nav_config->{$mp}->{order}       // $action_attrs->{MenuParentOrder}->[0]       // 0,
-						label       => $c_nav_config->{$mp}->{label}       // $ctr_nav_config->{$mp}->{label}       // $action_attrs->{MenuParentLabel}->[0]       // $menu_path_item,
-						title       => $c_nav_config->{$mp}->{title}       // $ctr_nav_config->{$mp}->{title}       // $action_attrs->{MenuParentTitle}->[0]       // '',
-						icon        => $c_nav_config->{$mp}->{icon}        // $ctr_nav_config->{$mp}->{icon}        // $action_attrs->{MenuParentIcon}->[0]        // '',
-						category    => $c_nav_config->{$mp}->{category}    // $ctr_nav_config->{$mp}->{category}    // $action_attrs->{MenuParentCategory}->[0]    // $self->default_category,
-						description => $c_nav_config->{$mp}->{description} // $ctr_nav_config->{$mp}->{description} // $action_attrs->{MenuParentDescription}->[0] // '',
-						dom_id      => $c_nav_config->{$mp}->{dom_id}      // $ctr_nav_config->{$mp}->{dom_id}      // $action_attrs->{MenuParentDomId}->[0]       // '',
-						css_classes => $c_nav_config->{$mp}->{css_classes} // $ctr_nav_config->{$mp}->{css_classes} // $action_attrs->{MenuParentCssClasses}       // [],
+						path        => $c_nav_item_menu->{path}        // $ctr_nav_item_menu->{path}        // $act_attrs->{MenuParentPath}->[0]        // $menu_path,
+						order       => $c_nav_item_menu->{order}       // $ctr_nav_item_menu->{order}       // $act_attrs->{MenuParentOrder}->[0]       // 0,
+						label       => $c_nav_item_menu->{label}       // $ctr_nav_item_menu->{label}       // $act_attrs->{MenuParentLabel}->[0]       // $menu_path_item,
+						title       => $c_nav_item_menu->{title}       // $ctr_nav_item_menu->{title}       // $act_attrs->{MenuParentTitle}->[0]       // '',
+						icon        => $c_nav_item_menu->{icon}        // $ctr_nav_item_menu->{icon}        // $act_attrs->{MenuParentIcon}->[0]        // '',
+						category    => $c_nav_item_menu->{category}    // $ctr_nav_item_menu->{category}    // $act_attrs->{MenuParentCategory}->[0]    // $self->default_category,
+						description => $c_nav_item_menu->{description} // $ctr_nav_item_menu->{description} // $act_attrs->{MenuParentDescription}->[0] // '',
+						dom_id      => $c_nav_item_menu->{dom_id}      // $ctr_nav_item_menu->{dom_id}      // $act_attrs->{MenuParentDomId}->[0]       // '',
+						css_classes => $c_nav_item_menu->{css_classes} // $ctr_nav_item_menu->{css_classes} // $act_attrs->{MenuParentCssClasses}       // [],
 					}
 				);
 			} ## end if ( $menu_path && !$self->get_menu...)
