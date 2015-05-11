@@ -169,11 +169,12 @@ sub action_items_for_menu {
 				if ( !$nav_item ) {
 
 					my $menu_path = '#' . join( '#', @sub_menus[0 .. $i] );
-# 					$c->log->debug( "Value of menu_path is: " . $menu_path ) if $c->debug;
+					my $mp = $menu_name . $menu_path;
+# 					$c->log->debug( "Value of mp is: " . $mp ) if $c->debug;
 
 # 					$c->log->debug( "Creating new sub_menu for: " . $am_item->{menu_parent} . " using path: " . $menu_path_item ) if $c->debug;
 # 					my $menu = $self->get_menu( $am_item->{menu_parent} );
-					my $menu = $self->get_menu($menu_path);
+					my $menu = $self->get_menu($mp);
 					$nav_item = {
 						path        => $menu_path_item,
 						order       => $menu->{order},
@@ -328,19 +329,21 @@ sub add_action_menu_item {
 			my $menu_path = '#' . join( '#', @sub_menus );
 # 			$c->log->debug( "Checking menu exists: " . $menu_path ) if $c->debug;
 
-			if ( $menu_path && !$self->get_menu($menu_path) ) {
+			my $mp = $menubar . $menu_path;
+			if ( $mp && !$self->get_menu($mp) ) {
 # 				$c->log->debug( "Setting menu - menu_path is: " . $menu_path ) if $c->debug;
-				my $mp = $menubar . $menu_path;
 				my $c_nav_item_menu   = $c->get_navigation_item($mp)          || {};
 				my $ctr_nav_item_menu = $controller->get_navigation_item($mp) || {};
 				$c->log->debug(
 					sprintf(
-						"Setting menu with label - ctx: %s, ctrl: %s, attr: %s, path: %s", $c_nav_item_menu->{label} || '', $ctr_nav_item_menu->{label} || '',
+						"Setting menu %s with label - ctx: %s, ctrl: %s, attr: %s, path: %s",
+						$mp,
+						$c_nav_item_menu->{label} || '', $ctr_nav_item_menu->{label} || '',
 						$act_attrs->{MenuParentLabel}->[0] || '', $menu_path_item
 					)
 				) if $c->debug;
 				$self->set_menus(
-					$menu_path, {
+					$mp, {
 						path        => $c_nav_item_menu->{path}        // $ctr_nav_item_menu->{path}        // $act_attrs->{MenuParentPath}->[0]        // $menu_path,
 						order       => $c_nav_item_menu->{order}       // $ctr_nav_item_menu->{order}       // $act_attrs->{MenuParentOrder}->[0]       // 0,
 						label       => $c_nav_item_menu->{label}       // $ctr_nav_item_menu->{label}       // $act_attrs->{MenuParentLabel}->[0]       // $menu_path_item,

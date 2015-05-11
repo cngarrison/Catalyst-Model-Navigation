@@ -4,7 +4,7 @@ Catalyst::Model::Navigation - Create HTML::Navigation model, populate with actio
 
 # VERSION
 
-version 0.000002
+version 0.000003
 
 # AUTHOR
 
