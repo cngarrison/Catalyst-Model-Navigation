@@ -30,6 +30,21 @@ has "action_menu_items" => (
 		clear_action_menu_items   => 'clear',
 	},
 );
+has "cms_menu_items" => (
+	is      => "rw",
+	isa     => "HashRef",
+	traits  => ['Hash'],
+	default => sub { {} },
+	handles => {
+		get_cms_menu_item       => 'get',
+		get_all_cms_menu_items  => 'values',
+		get_cms_menu_items_list => 'elements',
+		set_cms_menu_item       => 'set',
+		has_cms_menu_items      => 'count',
+		has_no_cms_menu_items   => 'is_empty',
+		clear_cms_menu_items    => 'clear',
+	},
+);
 
 has "menus" => (
 	is      => "rw",
@@ -71,11 +86,13 @@ sub prepare_arguments {
 	my $args = $self->next::method( $c, @_ );
 #  	$c->log->debug( "Preparing ARGUMENTS with: " . p($args) ) if $c->debug;
 
-	$self->_build_action_menu_items($c);    # can't use a lazy builder, need to get $ctx
+	$self->_build_cms_menu_items($c);    ## can't use a lazy builder, need to get $ctx
+	$self->_build_action_menu_items($c); ## can't use a lazy builder, need to get $ctx
 
 	## Root of menus is #; a menu_item with parent of # will be located directly on the menu bar (for traditional menu bars)
-	##  MenuBar#MenuLabel#SubMenuLabel  -vs-  #MenuLabel#SubMenuLabel (default menu bar)
-	my $menu_name = delete $args->{menu_name};    # Members, Admin, Developer, Footer
+	##   MenuBar#MenuLabel#SubMenuLabel  -vs-  #MenuLabel#SubMenuLabel (default menu bar)
+	## menu_name: Members, AdminHome, RecordEdit, Developer, Footer (is generally name of a menubar, but could be a submenu)
+	my $menu_name = delete $args->{menu_name};
 	$menu_name ||= '';
 	$c->log->debug("Preparing ARGUMENTS for menu $menu_name") if $c->debug;
 
@@ -92,7 +109,7 @@ sub _build_action_menu_items {
 	my $c    = shift;
 
 	if ( $self->has_no_action_menu_items ) {
-		$c->log->debug("Creating NAV ITEMS") if $c->debug;
+		$c->log->debug("Creating NAV ACTION ITEMS") if $c->debug;
 		my $dispatcher = $c->dispatcher;
 
 		foreach my $c_name ( $c->controllers(qr//) ) {
@@ -127,13 +144,39 @@ sub _build_action_menu_items {
 
 } ## end sub _build_action_menu_items
 
+sub _build_cms_menu_items {
+	my $self = shift;
+	my $c    = shift;
+
+	$self->clear_cms_menu_items;
+# 	if ( $self->has_no_cms_menu_items ) {
+		$c->log->debug("Creating NAV CMS ITEMS") if $c->debug;
+		my $pages = $c->model('DBIC::PageTemplate')->published_pages;
+
+		while (my $page = $pages->next) {
+# 			$c->log->debug("Looking at Page ".$page->name." for cms entries") if $c->debug;
+			$self->add_cms_menu_item( $c, $page );
+		}
+# 	}
+
+# 	my $cms_menu_items = $self->cms_menu_items;
+#  	$c->log->debug( "Value of cms_menu_items is: " . p($cms_menu_items) ) if $c->debug;
+# 	my $menus = $self->menus;
+#  	$c->log->debug( "Value of menus is: " . p($menus) ) if $c->debug;
+
+} ## end sub _build_cms_menu_items
+
 sub action_items_for_menu {
 	my $self      = shift;
 	my $c         = shift;
 	my $menu_name = shift;
 
 	my @am_items = sort { $a->{menu_parent} cmp $b->{menu_parent} }
-	  grep { $_->{menu_parent} =~ m/^$menu_name(#.*)?$/ } ($self->get_all_action_menu_items, $c->get_all_extra_navigation_items);
+	  grep { $_->{menu_parent} =~ m/^$menu_name(#.*)?$/ } (
+		$self->get_all_action_menu_items,
+		$self->get_all_cms_menu_items,
+		$c->get_all_extra_navigation_items
+	  );
 
 #  	$c->log->debug( "Value of extra_navigation_items is: " . p($c->get_all_extra_navigation_items) ) if $c->debug;
 #  	$c->log->debug( "Searching for am_items with parent matching: m/^$menu_name(#.*)?\$/" ) if $c->debug;
@@ -147,9 +190,12 @@ sub action_items_for_menu {
 # 		$m_parent =~ s/^([^#]*)(#.*)/$2/; ## remove name of menubar
 		$m_parent =~ s/^$menu_name(#.*)/$1/; ## remove name of menubar#menu
 
-		my $is_active = $am_item->{path} eq $current_action_key ? 1 : 0;
+		my $is_active =
+		  ( $am_item->{path} eq $current_action_key || 
+		    ( $current_action_key eq '/docs' && $c->stash->{page}->{path} eq $am_item->{path} ) 
+		  ) ? 1 : 0;
 		$am_item->{is_active} = $is_active;    # we're changing $am_item each time, should we be making a copy instead?
-#  		$c->log->debug( "$am_item->{path} active: $is_active" ) if $c->debug;
+#  		$c->log->debug( "$am_item->{path} active: $is_active for action_key: $current_action_key" ) if $c->debug;
 
 		my @sub_menus = split( '#', $m_parent );
 		shift @sub_menus unless $sub_menus[0];
@@ -334,25 +380,26 @@ sub add_action_menu_item {
 # 				$c->log->debug( "Setting menu - menu_path is: " . $menu_path ) if $c->debug;
 				my $c_nav_item_menu   = $c->get_navigation_item($mp)          || {};
 				my $ctr_nav_item_menu = $controller->get_navigation_item($mp) || {};
+				my $nav_menu = $c->model('DBIC::NavMenu')->hri->find({path=>$mp}) || {};
 				$c->log->debug(
 					sprintf(
 						"Setting menu %s with label - ctx: %s, ctrl: %s, attr: %s, path: %s",
 						$mp,
-						$c_nav_item_menu->{label} || '', $ctr_nav_item_menu->{label} || '',
+						$nav_menu->{label} || $c_nav_item_menu->{label} || '', $ctr_nav_item_menu->{label} || '',
 						$act_attrs->{MenuParentLabel}->[0] || '', $menu_path_item
 					)
 				) if $c->debug;
 				$self->set_menus(
 					$mp, {
-						path        => $c_nav_item_menu->{path}        // $ctr_nav_item_menu->{path}        // $act_attrs->{MenuParentPath}->[0]        // $menu_path,
-						order       => $c_nav_item_menu->{order}       // $ctr_nav_item_menu->{order}       // $act_attrs->{MenuParentOrder}->[0]       // 0,
-						label       => $c_nav_item_menu->{label}       // $ctr_nav_item_menu->{label}       // $act_attrs->{MenuParentLabel}->[0]       // $menu_path_item,
-						title       => $c_nav_item_menu->{title}       // $ctr_nav_item_menu->{title}       // $act_attrs->{MenuParentTitle}->[0]       // '',
-						icon        => $c_nav_item_menu->{icon}        // $ctr_nav_item_menu->{icon}        // $act_attrs->{MenuParentIcon}->[0]        // '',
-						category    => $c_nav_item_menu->{category}    // $ctr_nav_item_menu->{category}    // $act_attrs->{MenuParentCategory}->[0]    // $self->default_category,
-						description => $c_nav_item_menu->{description} // $ctr_nav_item_menu->{description} // $act_attrs->{MenuParentDescription}->[0] // '',
-						dom_id      => $c_nav_item_menu->{dom_id}      // $ctr_nav_item_menu->{dom_id}      // $act_attrs->{MenuParentDomId}->[0]       // '',
-						css_classes => $c_nav_item_menu->{css_classes} // $ctr_nav_item_menu->{css_classes} // $act_attrs->{MenuParentCssClasses}       // [],
+						path        => $nav_menu->{path}        // $c_nav_item_menu->{path}        // $ctr_nav_item_menu->{path}        // $act_attrs->{MenuParentPath}->[0]        // $menu_path,
+						order       => $nav_menu->{sort_order}  // $c_nav_item_menu->{order}       // $ctr_nav_item_menu->{order}       // $act_attrs->{MenuParentOrder}->[0]       // 0,
+						label       => $nav_menu->{label}       // $c_nav_item_menu->{label}       // $ctr_nav_item_menu->{label}       // $act_attrs->{MenuParentLabel}->[0]       // $menu_path_item,
+						title       => $nav_menu->{title}       // $c_nav_item_menu->{title}       // $ctr_nav_item_menu->{title}       // $act_attrs->{MenuParentTitle}->[0]       // '',
+						icon        => $nav_menu->{icon}        // $c_nav_item_menu->{icon}        // $ctr_nav_item_menu->{icon}        // $act_attrs->{MenuParentIcon}->[0]        // '',
+						category    => $nav_menu->{category}    // $c_nav_item_menu->{category}    // $ctr_nav_item_menu->{category}    // $act_attrs->{MenuParentCategory}->[0]    // $self->default_category,
+						description => $nav_menu->{description} // $c_nav_item_menu->{description} // $ctr_nav_item_menu->{description} // $act_attrs->{MenuParentDescription}->[0] // '',
+						dom_id      => $nav_menu->{dom_id}      // $c_nav_item_menu->{dom_id}      // $ctr_nav_item_menu->{dom_id}      // $act_attrs->{MenuParentDomId}->[0]       // '',
+						css_classes => $nav_menu->{css_classes} // $c_nav_item_menu->{css_classes} // $ctr_nav_item_menu->{css_classes} // $act_attrs->{MenuParentCssClasses}       // [],
 					}
 				);
 			} ## end if ( $menu_path && !$self->get_menu...)
@@ -363,6 +410,83 @@ sub add_action_menu_item {
 
 	} ## end for ( my $i = 0; $i <= $#$menu_parents...)
 } ## end sub add_action_menu_item
+
+sub add_cms_menu_item {
+	my ( $self, $c, $page ) = @_;
+
+	my $parent_mp = $page->menu_parent || '#';
+
+	## does parent contain a hash
+	## if not, it's the name of a menubar, so append # to make menu root
+	$parent_mp = $parent_mp . '#' unless $parent_mp =~ /#/;
+
+	my $mp_tp = sprintf( '%s!%s', $parent_mp, $page->template_path );
+
+	return if $self->get_cms_menu_item($mp_tp);
+
+	my $item = {
+		menu_parent    => $parent_mp,
+		path           => $page->template_path,
+# 		path           => '/docs/' . $page->template_path,
+		url            => $c->uri_for_action( '/docs', $page->template_path ),
+		order          => $page->menu_order // 0,
+		label          => $page->name // '',
+		title          => $page->menu_title // $page->name // '',
+		icon           => $page->menu_icon // '',
+		dom_id         => '',
+		css_classes    => $page->menu_css_classes // [],
+		category       => $page->menu_category // $self->default_category,
+		description    => $page->description // '',
+		required_roles => '',
+# 		conditions     => $conditions,
+	};
+
+	$self->set_cms_menu_item( $mp_tp, $item );
+
+	my $m_parent = $parent_mp;
+	$m_parent =~ s/^([^#]*)(#.*)/$2/; ## remove name of menubar
+	my $menubar = $1 || '';
+	my @sub_menus = split( '#', $m_parent );
+	shift @sub_menus unless $sub_menus[0];
+
+	while ( scalar @sub_menus >= 1 ) {    # count of items, not last index
+		my $menu_path_item = $sub_menus[-1];
+		my $menu_path = '#' . join( '#', @sub_menus );
+# 			$c->log->debug( "Checking menu exists: " . $menu_path ) if $c->debug;
+
+		my $mp = $menubar . $menu_path;
+# 		if ( $mp && !$self->get_menu($mp) ) {
+		if ( $mp ) {
+# 				$c->log->debug( "Setting menu - menu_path is: " . $menu_path ) if $c->debug;
+			my $c_nav_item_menu = $c->get_navigation_item($mp) || {};
+			my $nav_menu = $c->model('DBIC::NavMenu')->hri->find({path=>$mp}) || {};
+			$c->log->debug(
+				sprintf(
+					"Setting menu %s with label - ctx: %s, path: %s",
+					$mp, 
+					$nav_menu->{label} || $c_nav_item_menu->{label} || '', 
+					$menu_path_item
+				)
+			) if $c->debug;
+			$self->set_menus(
+				$mp, {
+					path        => $nav_menu->{path}        // $c_nav_item_menu->{path}        // $menu_path,
+					order       => $nav_menu->{sort_order}  // $c_nav_item_menu->{order}       // 0,
+					label       => $nav_menu->{label}       // $c_nav_item_menu->{label}       // $menu_path_item,
+					title       => $nav_menu->{title}       // $c_nav_item_menu->{title}       // '',
+					icon        => $nav_menu->{icon}        // $c_nav_item_menu->{icon}        // '',
+					category    => $nav_menu->{category}    // $c_nav_item_menu->{category}    // $self->default_category,
+					description => $nav_menu->{description} // $c_nav_item_menu->{description} // '',
+					dom_id      => $nav_menu->{dom_id}      // $c_nav_item_menu->{dom_id}      // '',
+					css_classes => $nav_menu->{css_classes} // $c_nav_item_menu->{css_classes} // [],
+				}
+			);
+		} ## end if ( $mp && !$self->get_menu($mp...))
+		pop @sub_menus;
+
+	} ## end while ( scalar @sub_menus >= 1 )
+
+} ## end sub add_cms_menu_item
 
 
 sub _build_url_coderef {
