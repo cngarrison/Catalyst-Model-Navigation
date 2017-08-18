@@ -352,7 +352,10 @@ sub add_action_menu_item {
 		if ( scalar @$action_url_args >= 1 || $action_url_params  ) {
 			$url_cb = $self->_build_url_coderef( $action, $action_url_args, $action_url_params );
 		} else {
-			$url = $c->uri_for_action($action);
+# 			$url = $c->uri_for_action($action);
+			## if we call $c->uri_for_action($action) now, then we get BASE for url of whatever app was first called with
+			## eg. could be venuefinder.net.au rather than venuefinder.com.au, needs to be BASE from current request
+			$url_cb = $self->_build_url_coderef( $action, [], {} );
 		}
 
 		## when finding the value to use for each of the item options; default values start with action attributes
