@@ -215,8 +215,8 @@ sub action_items_for_menu {
 		$m_parent =~ s/^$menu_name(#.*)/$1/; ## remove name of menubar#menu
 
 		my $is_active =
-		  ( $am_item->{path} eq $current_action_key || 
-		    ( $current_action_key eq '/docs' && $c->stash->{page}->{path} eq $am_item->{path} ) 
+		  ( $am_item->{path} eq $current_action_key ||
+		    ( $current_action_key eq '/docs' && $c->stash->{page}->{path} eq $am_item->{path} )
 		  ) ? 1 : 0;
 		$am_item->{is_active} = $is_active;    # we're changing $am_item each time, should we be making a copy instead?
 #  		$c->log->debug( "$am_item->{path} active: $is_active for action_key: $current_action_key" ) if $c->debug;
@@ -357,28 +357,29 @@ sub add_action_menu_item {
 
 		## when finding the value to use for each of the item options; default values start with action attributes
 		## set either inline or via action config; values are overridden by upper layers of the app; next is
-		## controller's config->{navigation}, followed by app's config->{navigation}; lastly, use values from 
+		## controller's config->{navigation}, followed by app's config->{navigation}; lastly, use values from
 		## item of previous menu_parent. The first defined value found will be used:
 		## - $myapp->config->{navigation} (also $c)
 		## - $self->config->{navigation} (also $controller)
 		## - $action->{attributes}
 		## - $last_item
-		
+
 		my $item = {
 			menu_parent => $parent_mp,
-			path        => $action_key, (
+			path        => $action_key,
+			(
 				$url_cb
 				? ( url_cb => $url_cb )
-				: ( url => $url )
+				: ( url    => $url )
 			),
-			query_params => $action_url_params,
-			order        => $c_nav_item->{order} // $ctr_nav_item->{order} // $act_attrs->{MenuOrder}->[$i] // $last_item->{order} // 0,
-			label        => $c_nav_item->{label} // $ctr_nav_item->{label} // $act_attrs->{Menu}->[$i] // $last_item->{label} // '',
-			title        => $c_nav_item->{title} // $ctr_nav_item->{title} // $act_attrs->{MenuTitle}->[$i] // $last_item->{title} // '',
-			icon         => $c_nav_item->{icon} // $ctr_nav_item->{icon} // $act_attrs->{MenuIcon}->[$i] // $last_item->{icon} // '',
-			dom_id       => $c_nav_item->{dom_id} // $ctr_nav_item->{dom_id} // $act_attrs->{MenuDomId}->[$i] // $last_item->{dom_id} // '',
-			css_classes => $c_nav_item->{css_classes} // $ctr_nav_item->{css_classes} // $act_attrs->{MenuCssClasses} // [],
-			category => $c_nav_item->{category} // $ctr_nav_item->{category} // $act_attrs->{MenuCategory}->[$i] // $last_item->{category} // $self->default_category,
+			query_params   => $action_url_params,
+			order          => $c_nav_item->{order}          // $ctr_nav_item->{order}          // $act_attrs->{MenuOrder}->[$i]       // $last_item->{order}          // 0,
+			label          => $c_nav_item->{label}          // $ctr_nav_item->{label}          // $act_attrs->{Menu}->[$i]            // $last_item->{label}          // '',
+			title          => $c_nav_item->{title}          // $ctr_nav_item->{title}          // $act_attrs->{MenuTitle}->[$i]       // $last_item->{title}          // '',
+			icon           => $c_nav_item->{icon}           // $ctr_nav_item->{icon}           // $act_attrs->{MenuIcon}->[$i]        // $last_item->{icon}           // '',
+			dom_id         => $c_nav_item->{dom_id}         // $ctr_nav_item->{dom_id}         // $act_attrs->{MenuDomId}->[$i]       // $last_item->{dom_id}         // '',
+			css_classes    => $c_nav_item->{css_classes}    // $ctr_nav_item->{css_classes}    // $act_attrs->{MenuCssClasses}        // [],
+			category       => $c_nav_item->{category}       // $ctr_nav_item->{category}       // $act_attrs->{MenuCategory}->[$i]    // $last_item->{category}       // $self->default_category,
 			description    => $c_nav_item->{description}    // $ctr_nav_item->{description}    // $act_attrs->{MenuDescription}->[$i] // $last_item->{description}    // '',
 			required_roles => $c_nav_item->{required_roles} // $ctr_nav_item->{required_roles} // $act_attrs->{MenuRoles}->[$i]       // $last_item->{required_roles} // '',
 			conditions     => $conditions,
@@ -487,8 +488,8 @@ sub add_cms_menu_item {
 			$c->log->debug(
 				sprintf(
 					"Setting menu %s with label - ctx: %s, path: %s",
-					$mp, 
-					$nav_menu->{label} || $c_nav_item_menu->{label} || '', 
+					$mp,
+					$nav_menu->{label} || $c_nav_item_menu->{label} || '',
 					$menu_path_item
 				)
 			) if $c->debug;
