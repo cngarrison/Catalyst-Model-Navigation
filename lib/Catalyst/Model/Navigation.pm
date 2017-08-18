@@ -517,12 +517,20 @@ sub add_cms_menu_item {
 } ## end sub add_cms_menu_item
 
 
+
+# gets used as class method from CNG::Roles::Navigation
 sub _build_url_coderef {
 	my ( $self, $action, $action_args, $query_params ) = @_;
 	my $sub = sub {
 		my $ctx = shift;
-		@$action_args = map {
-			my @elems = split( '\.', $_ );
+
+		my $processed_action_args  = [];
+		my $processed_query_params = {};
+
+		my $varname2val = sub {
+			my $varname = shift;
+
+			my @elems = split( '\.', $varname );
 			my $elem1 = shift @elems;
 			my $val;
 			if ( $ctx->can($elem1) ) {
@@ -532,7 +540,7 @@ sub _build_url_coderef {
 			} else {
 				$val = $elem1;
 			}
-			foreach my $elem (@elems) {
+			foreach my $elem (@elems) { # process nested elements of var name
 				if ( blessed $val && $val->can($elem) ) {
 					$val = $val->$elem;
 				} elsif ( exists $ctx->stash->{$elem} ) {
@@ -543,45 +551,28 @@ sub _build_url_coderef {
 					$val = $elem;
 				}
 			} ## end foreach my $elem (@elems)
-			$val;
-		} @$action_args;
+
+			return $val;
+		};
+
+		@$processed_action_args = map {
+			$varname2val->($_)
+		} @$action_args; # list of varnames to convert to values
+
 		if (ref $query_params eq 'HASH') {
-			# do nothing??
+			$processed_query_params = $query_params;
 		} elsif (! ref $query_params) {
-			my $parsed_params = {};
-			my $callback = sub {
-				my ($name, $value) = @_;
-				my @elems = split( '\.', $value );
-				my $elem1 = shift @elems;
-				my $val;
-				if ( $ctx->can($elem1) ) {
-					$val = $ctx->$elem1;
-				} elsif ( exists $ctx->stash->{$elem1} ) {
-					$val = $ctx->stash->{$elem1};
-				} else {
-					$val = $elem1;
-				}
-				foreach my $elem (@elems) {
-					if ( blessed $val && $val->can($elem) ) {
-						$val = $val->$elem;
-					} elsif ( exists $ctx->stash->{$elem} ) {
-						$val = $ctx->stash->{$elem};
-					} elsif ( ref $val eq 'HASH' && exists $val->{$elem} ) {
-						$val = $val->{$elem};
-					} else {
-						$val = $elem;
-					}
-				} ## end foreach my $elem (@elems)
-				$parsed_params->{$name} = $val;
+			my $process_query_params_cb = sub {
+				my ($name, $varname) = @_;
+				$processed_query_params->{$name} = $varname2val->($varname);
 			};
- 
-			url_params_each($query_params, $callback);
-			$query_params = $parsed_params;
+			url_params_each($query_params, $process_query_params_cb); # query string of queryarg=varnames to convert to hash of values
 		} else {
 			warn "query_params is something unexpected";
 		}
-		
-		$ctx->uri_for_action( $action, $action_args, $query_params );
+
+		my $uri = $ctx->uri_for_action( $action, $processed_action_args, $processed_query_params );
+		return $uri;
 	};
 	return $sub;
 } ## end sub _build_url_coderef
