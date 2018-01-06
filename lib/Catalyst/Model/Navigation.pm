@@ -139,9 +139,9 @@ sub _build_action_menu_items {
 
 	my $site_code = $c->site_code;
 
-	if ($self->get_action_menu_item_for_site($site_code)) {
+	if (my $ami = $self->get_action_menu_item_for_site($site_code)) {
 		$c->log->debug("Using NAV ACTION ITEMS for $site_code") if $self->debug_nav;
-		$self->action_menu_items( $self->get_action_menu_item_for_site($site_code) );
+		$self->action_menu_items( $ami );
 	} else {
 # 	if ( $self->has_no_action_menu_items ) {
 		$self->clear_action_menu_items;
@@ -334,7 +334,13 @@ sub add_action_menu_item {
 		my $c_nav_item   = $c->get_navigation_item($mp_ak) || {};
 		my $ctr_nav_item = $controller->get_navigation_item($mp_ak) || {};
 
-		my $conditions = $c_nav_item->{conditions}  // $ctr_nav_item->{conditions}  // $act_attrs->{MenuCond} // [];
+
+		my $conditions         = $c_nav_item->{conditions}             // $ctr_nav_item->{conditions}             // $act_attrs->{MenuCond}      // [];
+		my $action_cond_args   = $c_nav_item->{condition_args}         // $ctr_nav_item->{condition_args}         // $act_attrs->{MenuCondArgs}  // [];
+		my $action_cond_params = $c_nav_item->{condition_query_params} // $ctr_nav_item->{condition_query_params} // $act_attrs->{MenuCondQueryParams}->[$i] // $last_item->{condition_query_params} // '';
+		$conditions = [map { $self->_build_condition_coderef( $_, $action_cond_args, $action_cond_params ) } @$conditions]
+		  if ( scalar @$action_cond_args >= 1 || $action_cond_params );
+
 # 		if ( scalar @$conditions == 0 ) {
 			my $role_attr = $act_attrs->{MenuRoles}->[$i] // $last_item->{required_roles} // '';
 			if ($role_attr) {
@@ -360,12 +366,12 @@ sub add_action_menu_item {
 			} ## end if ($role_attr)
 # 		} ## end if ( scalar @$conditions == 0 )
 
-		my $action_url_args   = $act_attrs->{MenuArgs} // [];
-		my $action_url_params = $c_nav_item->{query_params}  // $ctr_nav_item->{query_params}  // $act_attrs->{MenuQueryParams}->[$i] // $last_item->{query_params}  // '',
+		my $action_args   = $act_attrs->{MenuUrlArgs} // [];
+		my $action_url_params = $c_nav_item->{url_query_params}  // $ctr_nav_item->{url_query_params}  // $act_attrs->{MenuUrlQueryParams}->[$i] // $last_item->{url_query_params}  // '',
 		my $url;
 		my $url_cb;
-		if ( scalar @$action_url_args >= 1 || $action_url_params  ) {
-			$url_cb = $self->_build_url_coderef( $action, $action_url_args, $action_url_params );
+		if ( scalar @$action_args >= 1 || $action_url_params  ) {
+			$url_cb = $self->_build_url_coderef( $action, $action_args, $action_url_params );
 		} else {
 # 			$url = $c->uri_for_action($action);
 			## if we call $c->uri_for_action($action) now, then we get BASE for url of whatever app was first called with
@@ -535,12 +541,12 @@ sub add_cms_menu_item {
 
 # gets used as class method from CNG::Roles::Navigation
 sub _build_url_coderef {
-	my ( $self, $action, $action_args, $query_params ) = @_;
+	my ( $self, $action, $action_args, $url_query_params ) = @_;
 	my $sub = sub {
 		my $ctx = shift;
 
 		my $processed_action_args  = [];
-		my $processed_query_params = {};
+		my $processed_url_query_params = {};
 
 		my $varname2val = sub {
 			my $varname = shift;
@@ -574,24 +580,83 @@ sub _build_url_coderef {
 			$varname2val->($_)
 		} @$action_args; # list of varnames to convert to values
 
-		$query_params //= {};
-		if (ref $query_params eq 'HASH') {
-			$processed_query_params = $query_params;
-		} elsif (! ref $query_params) { # must be a string
-			my $process_query_params_cb = sub {
+		$url_query_params //= {};
+		if (ref $url_query_params eq 'HASH') {
+			$processed_url_query_params = $url_query_params;
+		} elsif (! ref $url_query_params) { # must be a string
+			my $process_url_query_params_cb = sub {
 				my ($name, $varname) = @_;
-				$processed_query_params->{$name} = $varname2val->($varname);
+				$processed_url_query_params->{$name} = $varname2val->($varname);
 			};
-			url_params_each($query_params, $process_query_params_cb); # query string of queryarg=varnames to convert to hash of values
+			url_params_each($url_query_params, $process_url_query_params_cb); # query string of queryarg=varnames to convert to hash of values
 		} else {
-			warn sprintf("query_params is something unexpected for action %s: with params: %s\n", "$action", p($query_params));
+			warn sprintf("url_query_params is something unexpected for action %s: with params: %s\n", "$action", p($url_query_params));
 		}
 
-		my $uri = $ctx->uri_for_action( $action, $processed_action_args, $processed_query_params );
+		my $uri = $ctx->uri_for_action( $action, $processed_action_args, $processed_url_query_params );
 		return $uri;
 	};
 	return $sub;
 } ## end sub _build_url_coderef
+
+
+sub _build_condition_coderef {
+	my ( $self, $cond_cb, $cond_args, $cond_query_params ) = @_;
+	my $sub = sub {
+		my $ctx = shift;
+
+		my $processed_cond_args  = [];
+		my $processed_cond_query_params = {};
+
+		my $varname2val = sub {
+			my $varname = shift;
+
+			my @elems = split( '\.', $varname );
+			my $elem1 = shift @elems;
+			my $val;
+			if ( $ctx->can($elem1) ) {
+				$val = $ctx->$elem1;
+			} elsif ( exists $ctx->stash->{$elem1} ) {
+				$val = $ctx->stash->{$elem1};
+			} else {
+				$val = $elem1;
+			}
+			foreach my $elem (@elems) { # process nested elements of var name
+				if ( blessed $val && $val->can($elem) ) {
+					$val = $val->$elem;
+				} elsif ( exists $ctx->stash->{$elem} ) {
+					$val = $ctx->stash->{$elem};
+				} elsif ( ref $val eq 'HASH' && exists $val->{$elem} ) {
+					$val = $val->{$elem};
+				} else {
+					$val = $elem;
+				}
+			} ## end foreach my $elem (@elems)
+
+			return $val;
+		};
+
+		@$processed_cond_args = map {
+			$varname2val->($_)
+		} @$cond_args; # list of varnames to convert to values
+
+		$cond_query_params //= {};
+		if (ref $cond_query_params eq 'HASH') {
+			$processed_cond_query_params = $cond_query_params;
+		} elsif (! ref $cond_query_params) { # must be a string
+			my $process_cond_query_params_cb = sub {
+				my ($name, $varname) = @_;
+				$processed_cond_query_params->{$name} = $varname2val->($varname);
+			};
+			url_params_each($cond_query_params, $process_cond_query_params_cb); # query string of queryarg=varnames to convert to hash of values
+		} else {
+			warn sprintf("cond_query_params is something unexpected for cond with params: %s\n", p($cond_query_params));
+		}
+
+		return $cond_cb->( $ctx, $processed_cond_args, $processed_cond_query_params );
+	};
+	return $sub;
+} ## end sub _build_condition_coderef
 
 __PACKAGE__->meta->make_immutable;
 
