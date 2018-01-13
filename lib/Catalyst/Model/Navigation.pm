@@ -15,7 +15,7 @@ use URL::Encode qw(url_params_each);
 use Data::Printer;
 use Catalyst::Utils;
 
-our $VERSION = 'v0.0.11';
+our $VERSION = 'v0.0.12';
 
 has "action_menu_items_for_site" => (
 	is      => "rw",
